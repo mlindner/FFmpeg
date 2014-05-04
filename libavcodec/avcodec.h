@@ -2568,6 +2568,7 @@ typedef struct AVCodecContext {
 #define FF_DEBUG_BITSTREAM   4
 #define FF_DEBUG_MB_TYPE     8
 #define FF_DEBUG_QP          16
+#define FF_DEBUG_MB_POS_SIZE 32
 #if FF_API_DEBUG_MV
 /**
  * @deprecated this option does nothing
@@ -3065,6 +3066,14 @@ typedef struct AVCodecContext {
      * - decoding: unused.
      */
     uint16_t *chroma_intra_matrix;
+
+    /**
+     * Instructions to move the bitpositions of macroblocks
+     * - decoding: set by user
+     * - encoding: unused
+     */
+    char *mmb;
+
 } AVCodecContext;
 
 AVRational av_codec_get_pkt_timebase         (const AVCodecContext *avctx);

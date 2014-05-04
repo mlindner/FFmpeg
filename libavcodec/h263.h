@@ -78,6 +78,8 @@ extern const enum AVPixelFormat ff_h263_hwaccel_pixfmt_list_420[];
 int ff_h263_decode_motion(MpegEncContext * s, int pred, int f_code);
 av_const int ff_h263_aspect_to_info(AVRational aspect);
 int ff_h263_decode_init(AVCodecContext *avctx);
+int get_bitpos_from_mmb_part (int mb_x, int mb_y, char *mmb_part);
+int get_bitpos_from_mmb (int mb_x, int mb_y, char *mmb);
 int ff_h263_decode_frame(AVCodecContext *avctx,
                              void *data, int *got_frame,
                              AVPacket *avpkt);

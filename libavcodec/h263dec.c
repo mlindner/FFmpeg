@@ -27,6 +27,8 @@
 
 #define UNCHECKED_BITSTREAM_READER 1
 
+#include "stdlib.h"
+
 #include "libavutil/cpu.h"
 #include "avcodec.h"
 #include "error_resilience.h"
@@ -167,6 +169,87 @@ static int get_consumed_bytes(MpegEncContext *s, int buf_size)
     }
 }
 
+int get_bitpos_from_mmb_part (int mb_x, int mb_y, char *mmb_part) {
+    int bitpos = -1;
+
+    int mmb_part_length = strlen(mmb_part);
+
+    char mb_info_sep = ':'; 
+    char *mb_info1_sep_found;
+    char *mb_info2_sep_found;
+
+    // check if we have the x,y and bitposition
+    mb_info1_sep_found = strchr(mmb_part, mb_info_sep);
+    if (mb_info1_sep_found) {
+         mb_info2_sep_found = strchr(&mb_info1_sep_found[1], mb_info_sep);
+         if (mb_info2_sep_found) {
+
+            char *mmb_part_x = NULL;
+            int part_x_length = mb_info1_sep_found - mmb_part;
+            mmb_part_x = malloc(part_x_length + 1);
+            memcpy(mmb_part_x, mmb_part, part_x_length);
+            mmb_part_x[part_x_length] = '\0';
+            int mmb_x = strtol(mmb_part_x, NULL, 10);
+
+            char *mmb_part_y = NULL;
+            int part_y_length = mb_info2_sep_found - &mb_info1_sep_found[1];
+            mmb_part_y = malloc(part_y_length + 1);
+            memcpy(mmb_part_y, &mb_info1_sep_found[1], part_y_length);
+            mmb_part_y[part_y_length] = '\0';
+            int mmb_y = strtol(mmb_part_y, NULL, 10);
+
+            char *mmb_part_pos = NULL;
+            int part_pos_length = (mmb_part + mmb_part_length) - &mb_info2_sep_found[1];
+            mmb_part_pos = malloc(part_pos_length + 1);
+            memcpy(mmb_part_pos, &mb_info2_sep_found[1], part_pos_length);
+            mmb_part_pos[part_pos_length] = '\0';
+            int mmb_pos = strtol(mmb_part_pos, NULL, 10);
+
+            if (mb_x == mmb_x && mb_y == mmb_y) {
+                bitpos = mmb_pos;
+            }
+        }
+    }
+
+    return bitpos;
+}
+
+int get_bitpos_from_mmb (int mb_x, int mb_y, char *mmb) {
+    int bitpos = -1;
+
+    int mmb_text_length = strlen(mmb);
+
+    char *mmb_left_over = mmb;
+    char mb_sep = ','; 
+    char *mb_sep_found;
+
+    int reached_end = 0;
+
+    while(bitpos < 0 && !reached_end) {
+
+        mb_sep_found = strchr(mmb_left_over, mb_sep);
+        if (mb_sep_found) {
+            char *mmb_part = NULL;
+
+            int part_length = mb_sep_found - mmb_left_over;
+            mmb_part = malloc(part_length + 1);
+            memcpy(mmb_part, mmb_left_over, part_length);
+            mmb_part[part_length] = '\0';
+
+            bitpos = get_bitpos_from_mmb_part(mb_x, mb_y, mmb_part);
+
+            mmb_left_over = &mb_sep_found[1];
+        }
+        else {
+            bitpos = get_bitpos_from_mmb_part (mb_x, mb_y, mmb_left_over);
+
+            reached_end = 1;
+        }
+    }
+
+    return bitpos;
+}
+
 static int decode_slice(MpegEncContext *s)
 {
     const int part_mask = s->partitioned_frame
@@ -224,6 +307,18 @@ static int decode_slice(MpegEncContext *s)
         for (; s->mb_x < s->mb_width; s->mb_x++) {
             int ret;
 
+            av_dlog(s, "%d %d %06X\n",
+                    ret, get_bits_count(&s->gb), show_bits(&s->gb, 24));
+
+            if (s->avctx->mmb) {
+                int new_bitpos = get_bitpos_from_mmb(s->mb_x, s->mb_y, s->avctx->mmb);
+
+                if (new_bitpos >= 0) {
+                    int bit_count_now = get_bits_count(&s->gb);
+                    skip_bits(&s->gb, new_bitpos - bit_count_now);
+                }
+            }
+
             ff_update_block_index(s);
 
             if (s->resync_mb_x == s->mb_x && s->resync_mb_y + 1 == s->mb_y)
@@ -237,7 +332,14 @@ static int decode_slice(MpegEncContext *s)
                     ret, get_bits_count(&s->gb), show_bits(&s->gb, 24));
 
             tprintf(NULL, "Decoding MB at %dx%d\n", s->mb_x, s->mb_y);
+
+            int bit_count_before_decode = get_bits_count(&s->gb);;
+
             ret = s->decode_mb(s, s->block);
+
+            if (s->avctx->debug & FF_DEBUG_MB_POS_SIZE) {
+                av_log(s->avctx, AV_LOG_DEBUG, "MB pos/size: %d %02d:%02d:%d %d\n", ret, s->mb_x, s->mb_y, bit_count_before_decode, get_bits_count(&s->gb) - bit_count_before_decode );
+            }
 
             if (s->pict_type != AV_PICTURE_TYPE_B)
                 ff_h263_update_motion_val(s);
