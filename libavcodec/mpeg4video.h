@@ -217,6 +217,13 @@ static inline int ff_mpeg4_pred_dc(MpegEncContext *s, int n, int level,
         pred     = a;
         *dir_ptr = 0; /* left */
     }
+
+    av_log(s->avctx, AV_LOG_DEBUG,
+           "at %dx%d %s block %d pred dir: %s\n", s->mb_x, s->mb_y,
+           (n > 3 ? "chroma" : "luma"),
+           (n > 3 ? n-4 : n),
+           (*dir_ptr ? "top" : "left"));
+
     /* we assume pred is positive */
     pred = FASTDIV((pred + (scale >> 1)), scale);
 
